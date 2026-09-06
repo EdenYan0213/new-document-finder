@@ -34,6 +34,9 @@ cp "$ROOT/finder-sync/SyncExtension-Info.plist" "$APPEX_DIR/Contents/Info.plist"
 cp "$ROOT/finder-sync/Host-Info.plist"          "$APP_DIR/Contents/Info.plist"
 printf 'XPC!????' > "$APPEX_DIR/Contents/PkgInfo"
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
+# 文件类型图标（UTI 声明引用）
+mkdir -p "$APP_DIR/Contents/Resources"
+cp -f "$ROOT"/icons/*.icns "$APP_DIR/Contents/Resources/"
 
 echo "==> 签名（ad-hoc + 沙盒授权，先扩展后宿主）…"
 codesign --force --sign - --entitlements "$ROOT/finder-sync/extension.entitlements" "$APPEX_DIR"
