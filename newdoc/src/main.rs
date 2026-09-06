@@ -223,6 +223,19 @@ fn pick_type(labels: &[String]) -> Result<Option<usize>> {
 
 // ---------- 文件创建 ----------
 
+/// 给新文件写入类型自定义图标：Finder 将始终显示类型徽章，
+/// 不再生成内容缩略图（空白文档的缩略图是一张白纸，毫无辨识度）。
+/// 失败静默（不影响文件本身）；图标随文件保留。
+fn apply_custom_icon(dest: &Path, ext: &str) {
+    let base = app_dir();
+    let icns = base.join("icons").join(format!("icon-{ext}.icns"));
+    let tool = base.join("bin").join("seticon");
+    if !tool.is_file() || !icns.is_file() {
+        return;
+    }
+    let _ = Command::new(&tool).arg(&icns).arg(dest).output();
+}
+
 /// 在 dir 下原子创建 base.ext / base 2.ext …（create_new 保证不覆盖任何已有文件）
 fn create_in(dir: &Path, base: &str, ext: &str, template: Option<&Path>) -> Result<PathBuf> {
     for n in 1..=999 {
@@ -247,6 +260,7 @@ fn create_in(dir: &Path, base: &str, ext: &str, template: Option<&Path>) -> Resu
                         return Err(e);
                     }
                 }
+                apply_custom_icon(&dest, ext);
                 return Ok(dest);
             }
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,

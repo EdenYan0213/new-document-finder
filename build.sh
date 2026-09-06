@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/newdoc"
 
 OUT="$(cd .. && pwd)/build"
+SRCROOT="$(dirname "$OUT")"
 mkdir -p "$OUT"
 
 echo "==> cargo build --release (aarch64)…"
@@ -22,6 +23,11 @@ else
   echo "==> 跳过 x86_64（执行 rustup target add x86_64-apple-darwin 可启用 universal2）"
   mv -f "$OUT/newdoc-aarch64" "$OUT/newdoc"
 fi
+
+echo "==> 编译 seticon（universal2，写入自定义图标用）…"
+clang -arch arm64 -arch x86_64 -fobjc-arc -isysroot "$(xcrun --show-sdk-path)" \
+  -framework Foundation -framework AppKit \
+  "$SRCROOT/seticon/seticon.m" -o "$OUT/seticon"
 
 echo "==> 产物："
 ls -lh "$OUT/newdoc"

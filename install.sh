@@ -10,10 +10,12 @@ echo "==> 构建 newdoc（Rust，Release）…"
 ./build.sh
 
 echo "==> 安装 newdoc 与模板…"
-mkdir -p "$APP_DIR/bin" "$APP_DIR/templates"
+mkdir -p "$APP_DIR/bin" "$APP_DIR/templates" "$APP_DIR/icons"
 cp -f build/newdoc "$APP_DIR/bin/newdoc"
-chmod 755 "$APP_DIR/bin/newdoc"
+cp -f build/seticon "$APP_DIR/bin/seticon"
+chmod 755 "$APP_DIR/bin/newdoc" "$APP_DIR/bin/seticon"
 cp -f templates/未命名.* "$APP_DIR/templates/"
+cp -f icons/*.icns "$APP_DIR/icons/"
 # 已有用户配置不覆盖，保留自定义
 if [[ ! -f "$APP_DIR/config.toml" ]]; then
   cp -f newdoc/config.toml "$APP_DIR/config.toml"
