@@ -2,14 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleIdentifier</key>
-	<string>com.local.newdoc.host</string>
-	<key>CFBundleName</key>
-	<string>新建文档</string>
 	<key>CFBundleDisplayName</key>
 	<string>新建文档</string>
 	<key>CFBundleExecutable</key>
 	<string>newdoc-host</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.local.newdoc.host</string>
+	<key>CFBundleName</key>
+	<string>新建文档</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -23,16 +23,16 @@
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>net.daringfireball.markdown</string>
-			<key>UTTypeDescription</key>
-			<string>Markdown 文档</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-md</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.text</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Markdown 文档</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-md</string>
+			<key>UTTypeIdentifier</key>
+			<string>net.daringfireball.markdown</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -43,16 +43,16 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.apple.iwork.pages.sffpages</string>
-			<key>UTTypeDescription</key>
-			<string>Pages 文档</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-pages</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Pages 文档</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-pages</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.apple.iwork.pages.sffpages</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -62,16 +62,16 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.apple.iwork.numbers.sffnumbers</string>
-			<key>UTTypeDescription</key>
-			<string>Numbers 表格</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-numbers</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Numbers 表格</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-numbers</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.apple.iwork.numbers.sffnumbers</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -81,16 +81,16 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.apple.iwork.keynote.sffkey</string>
-			<key>UTTypeDescription</key>
-			<string>Keynote 演示</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-key</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Keynote 演示</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-key</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.apple.iwork.keynote.sffkey</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -99,20 +99,17 @@
 				</array>
 			</dict>
 		</dict>
-	</array>
-	<key>UTImportedTypeDeclarations</key>
-	<array>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.openxmlformats.wordprocessingml.document</string>
-			<key>UTTypeDescription</key>
-			<string>Word 文档</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-docx</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Word 文档</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-docx</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.openxmlformats.wordprocessingml.document</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -122,16 +119,16 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.openxmlformats.spreadsheetml.sheet</string>
-			<key>UTTypeDescription</key>
-			<string>Excel 表格</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-xlsx</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>Excel 表格</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-xlsx</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.openxmlformats.spreadsheetml.sheet</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -141,16 +138,16 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>org.openxmlformats.presentationml.presentation</string>
-			<key>UTTypeDescription</key>
-			<string>PowerPoint 演示文稿</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-pptx</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>PowerPoint 演示文稿</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-pptx</string>
+			<key>UTTypeIdentifier</key>
+			<string>org.openxmlformats.presentationml.presentation</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -160,16 +157,16 @@
 			</dict>
 		</dict>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>public.comma-separated-values-text</string>
-			<key>UTTypeDescription</key>
-			<string>CSV 表格</string>
-			<key>UTTypeIconFile</key>
-			<string>icon-csv</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.text</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>CSV 表格</string>
+			<key>UTTypeIconFile</key>
+			<string>icon-csv</string>
+			<key>UTTypeIdentifier</key>
+			<string>public.comma-separated-values-text</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

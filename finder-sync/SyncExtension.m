@@ -55,8 +55,13 @@ static NSString *NewdocBinPath(void) {
             @"Library/Application Support/NewDocument/bin/newdoc"];
 }
 
-// 文件调试日志：系统日志会脱敏动态内容，这里落盘明文，便于诊断
+// 文件调试日志：默认关闭；touch /tmp/newdoc-sync-debug.enabled 开启后写入
+// /tmp/newdoc-sync-debug.log（系统日志会脱敏动态内容，这里落盘明文便于诊断）
 static void SyncDebugLog(NSString *line) {
+    if (![[NSFileManager defaultManager] fileExistsAtPath:
+            @"/tmp/newdoc-sync-debug.enabled"]) {
+        return;
+    }
     NSString *path = @"/tmp/newdoc-sync-debug.log";
     NSString *out = [NSString stringWithFormat:@"[%@] %@\n",
                      [NSDate date], line];
