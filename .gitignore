@@ -2,4 +2,7 @@
 build/
 newdoc/target/
 
+# 图标中间产物（icons/gen_icons.py 可重新生成）
+icons/png/
+
 .DS_Store

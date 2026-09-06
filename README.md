@@ -1,132 +1,151 @@
-# Finder 右键「新建文档」
+# 新建文档 for macOS
 
-在 Finder 中右键即可像 Windows 一样新建各种文档：**txt / docx / xlsx / pptx / pdf / md / csv / rtf**。
-核心逻辑由 Rust 编写，无常驻进程、按需运行、用完即退。
+在 Finder 中**右键即可新建各类文档**——补上 macOS 缺失的 Windows 式「新建文件」功能。
+支持 **txt / docx / xlsx / pptx / pdf / md / csv / rtf / Pages / Numbers / Keynote** 共 11 种类型，
+新建的文件带有清晰的**类型徽章图标**，一眼可辨。
 
-## 使用方式
+核心逻辑由 **Rust** 编写，按需运行、用完即退、零注入面；Finder 扩展负责把
+「新建文档」子菜单放到**桌面与任意文件夹的右键菜单顶层**。
 
-| 操作 | 菜单位置 |
-|---|---|
-| 右键**桌面空白处** / 文件夹窗口空白处 | 右键菜单**顶层** → **新建文档** 子菜单（Finder 扩展提供）✨ |
-| 右键某个**文件夹** | 顶层子菜单同上；也可走 服务 → 新建文档 → 创建在该文件夹内 |
-| 右键某个**文件** | 同上 → 创建在其所在文件夹 |
-| 任意位置 | 快捷键 **⌥⌘J** → 在"当前位置"新建 |
-| 菜单栏 | **访达 → 服务 → 在当前文件夹新建文档** |
+## 功能一览
 
-选择类型后文件立即创建（命名 `未命名.ext`，重名自动变为 `未命名 2.ext`…），
-并自动在 Finder 中选中、弹出系统通知。创建后按 `Return` 即可重命名。
+- **三个创建入口**，行为一致：
+  - 右键菜单**顶层**「新建文档」子菜单（Finder 扩展；桌面空白处同样可用）
+    —— 单击父项弹出类型选择框，悬停展开子菜单直达
+  - 右键 → 服务 →「新建文档」（右键文件/文件夹时）/「在当前文件夹新建文档」（窗口空白处）
+  - 全局快捷键 **⌥⌘J**（在桌面或当前 Finder 窗口位置新建）
+- **类型徽章图标**：新建的文件自动写入自定义类型图标（DOC/XLS/PPT/PDF…），
+  优先级高于内容缩略图——空白文档也不会显示成一张白纸
+- 文件名 `未命名.ext`，重名自动顺延（`未命名 2.ext`…），创建后自动在 Finder 中选中
+- **零授权弹窗**（扩展入口不使用 AppleEvents）；快捷键入口首次使用需允许一次「控制 Finder」
+- 11 种类型全部由 `config.toml` 驱动，**改一处三个入口同步生效**
 
-> · 扩展若未启用：系统设置 → 通用 → 登录项与扩展 → 扩展 → 添加的扩展 →
->   **Finder** → 勾选「新建文档」。
-> · 首次使用快捷键/菜单栏入口时，系统会询问"是否允许控制 Finder"，点**允许**（仅一次）。
->   Finder 扩展入口**不需要任何授权**。
-> · 更换/清除快捷键：访达 → 服务 → 服务设置…，或：
->   `defaults delete pbs NSServicesStatus`（清除后重启 Finder）。
+## 系统要求与安装
 
-### 快捷键是怎么实现的
-
-`install.sh` 会把快捷键 ⌥⌘J 写入 `pbs.plist`（系统服务偏好，与
-"系统设置 → 键盘 → 键盘快捷键 → 服务"里手动设置等效）：
+要求 macOS 12+（在 macOS 26.6 Tahoe 上开发实测），安装过程需要 Rust（cargo）与 Xcode Command Line Tools。
 
 ```bash
-defaults write pbs NSServicesStatus -dict-add \
-  "com.local.newdocument.here - runWorkflowAsService - 在当前文件夹新建文档" \
-  '{ "enabled_context_menu" = 1; "enabled_services_menu" = 1; \
-     "presentation_modes" = { ContextMenu = 1; ServicesMenu = 1; }; \
-     "NSKeyEquivalent" = { default = J; }; }'
+./install.sh      # 一键安装（构建 + 安装 + 注册扩展 + 绑定快捷键）
+./uninstall.sh    # 一键卸载（无任何残留）
 ```
 
-想换字母，把 `default = J` 改成其他字母（系统自动加 ⌥⌘ 前缀）后执行
-`/System/Library/CoreServices/pbs -flush && killall Finder`。
+安装后若菜单未出现：`killall Finder`。扩展可在
+系统设置 → 通用 → 登录项与扩展 → 扩展 → 添加的扩展 → **Finder** 中开关。
 
 ## 架构
 
 ```
-① Finder 扩展（FinderSync）    /Applications/新建文档.app 内嵌 .appex
-   └─ 桌面/任意位置右键 → 顶层「新建文档」子菜单（类型清单实时读自 config.toml）
-        └─ 按需 exec → newdoc create
-② 服务（Quick Action）×2      ~/Library/Services/*.workflow
-   └─ 右键文件/文件夹 → 服务 → 新建文档；右键窗口空白处 → 在当前文件夹新建文档
-        └─ 薄壳 exec → newdoc run
-③ 快捷键 ⌥⌘J                  pbs.plist（等同系统服务快捷键设置）
-        └─ 触发 ② 的无输入服务
-
-所有入口共用核心：
-   newdoc (Rust, universal2, ~1 MB)  —  选类型/原子创建/模板拷贝/Finder 定位
-   ├─ config.toml                    —  类型清单，三入口共用，改一处全生效
-   └─ templates/未命名.{docx,xlsx,…}  —  模板，可自行替换
+┌─ 入口层 ────────────────────────────────────────────────┐
+│ ① FinderSync 扩展    /Applications/新建文档.app（内嵌 .appex）│
+│    右键顶层「新建文档」子菜单 + 单击父项弹选择框                │
+│ ② 服务 ×2            ~/Library/Services/*.workflow        │
+│    右键文件/文件夹、窗口空白处（服务子菜单）                     │
+│ ③ 快捷键 ⌥⌘J          系统服务快捷键（pbs.plist）            │
+└──────────────────────┬───────────────────────────────────┘
+                       ▼  全部按需调起（argv 传参，无 shell 拼接）
+┌─ 核心层（Rust）──────────────────────────────────────────┐
+│ newdoc create --dir <目录> --ext <类型>                    │
+│   原子创建（create_new 防覆盖）→ 模板拷贝 → 写入类型徽章图标   │
+│   → 在 Finder 中定位                                       │
+│ newdoc run [路径…]      交互流程（服务入口用）               │
+│ newdoc types [--tsv]    类型清单（扩展菜单实时读取）          │
+├─ 配置与资源（~/Library/Application Support/NewDocument/）  │
+│   config.toml   类型清单（11 种，可增删）                    │
+│   templates/    空白模板（替换即自定义初始内容）               │
+│   icons/        类型图标（写入自定义图标用）                  │
+│   bin/          newdoc + seticon                           │
+└─────────────────────────────────────────────────────────┘
 ```
 
-- 扩展与 `newdoc` 之间通过 argv 传参，无 shell 拼接；扩展**不使用 AppleEvents**，
-  因此该入口零授权弹窗。
-- Finder 扩展基于开源项目 [MacNewFile](https://github.com/GarfieldFluffJr/MacNewFile)
-  (GPL-3.0) 的实现思路二次开发（卷宗观察、bundle 结构），许可证沿用 GPL-3.0；
-  创建后端、类型配置、安全设计均为本项目的 Rust 实现。
+## 项目位置
 
-## 内存与安全设计
-
-**内存**
-- `newdoc` 核心：无守护进程，仅触发时运行，峰值内存实测 **约 1.6 MB**（服务与 CLI 入口零驻留）。
-- Finder 扩展：为提供桌面右键**顶层**菜单，扩展进程由系统托管常驻（实测 RSS 约 28 MB，
-  其中大部分为与系统共享的框架页）——这是 FinderSync 机制的固有成本，同类商业工具相同。
-  若不接受，可仅卸载扩展（`uninstall.sh` 会一并移除；服务菜单与快捷键入口不受影响）。
-- Release 构建：`opt-level="z"` + LTO + strip + `panic="abort"`，universal2 双架构核心二进制约 956 KB，
-  扩展二进制仅 137 KB。
-
-**安全**
-- 所有子进程（osascript/open）通过 **argv 数组**传参，绝不拼接 shell/AppleScript 字符串。
-- 文件创建使用 `OpenOptions::create_new` **原子新建**，从机制上不可能覆盖任何已有文件（防 TOCTOU）。
-- 扩展名白名单（小写字母/数字，≤16 位）、文件名前缀与模板名严格校验，配置中的恶意值无法造成路径穿越。
-- 模板复制失败自动**回滚**，不留半截文件。
-- 纯用户态安装（只写 `~/Library/Services` 与 `~/Library/Application Support/NewDocument`），无需 sudo、不改系统目录。
-- 无网络访问、无动态库依赖（静态链接 Rust 标准库以外的所有逻辑）。
-
-**通用性**
-- 类型由 `config.toml` 驱动：追加一段 `[[types]]` 并把模板文件放进 `templates/` 即可支持
-  任意格式（`.pages`、`.key`、`.drawio`……App 能打开就行）。
-- universal2 二进制同时支持 Apple Silicon 与 Intel Mac。
-- 命令行同样可用（可脚本化）：
-  ```bash
-  newdoc types                                  # 列出类型
-  newdoc create --dir ~/Documents --ext docx    # 非交互创建
-  newdoc run <文件或文件夹路径>                  # 交互流程
-  ```
-
-## 安装 / 卸载
-
-```bash
-./install.sh     # 需要 Xcode Command Line Tools 与 Rust（cargo）；装完建议 killall Finder
-./uninstall.sh   # 移除工作流、newdoc、模板与配置
-```
-
-安装内容：
-
-| 路径 | 内容 |
+| 位置 | 内容 |
 |---|---|
-| `~/Library/Services/新建文档.workflow` | 右键文件/文件夹入口 |
-| `~/Library/Services/在当前文件夹新建文档.workflow` | 右键空白处入口 |
-| `~/Library/Application Support/NewDocument/bin/newdoc` | Rust 核心 |
-| `~/Library/Application Support/NewDocument/config.toml` | 类型配置（重装不会覆盖你的修改） |
-| `~/Library/Application Support/NewDocument/templates/` | 文档模板（替换即自定义初始内容） |
+| **源码仓库（本地）** | `~/…/workspace/default/new-document-finder/`（本目录） |
+| **源码仓库（远程）** | [github.com/EdenYan0213/new-document-finder](https://github.com/EdenYan0213/new-document-finder) |
+| Finder 扩展宿主 App | `/Applications/新建文档.app` |
+| 服务工作流 | `~/Library/Services/新建文档.workflow`、`~/Library/Services/在当前文件夹新建文档.workflow` |
+| 核心 / 配置 / 模板 / 图标 | `~/Library/Application Support/NewDocument/` |
+| 快捷键注册 | `~/Library/Preferences/pbs.plist`（系统服务快捷键） |
 
-## 自定义示例
+## 源码结构
 
-新增"Keynote 演示"类型：把 `演示.key` 放进 `templates/`，在 `config.toml` 追加：
+```
+├── install.sh / uninstall.sh   一键安装 / 卸载
+├── build.sh                    构建 newdoc（Rust）与 seticon（universal2）
+├── build_ext.sh                构建 FinderSync 扩展 + 宿主 App（无需 Xcode，clang 直编）
+├── build.py                    生成两个 .workflow 服务包
+├── newdoc/                     Rust 核心（原子创建 / 模板 / 配置校验 / 自定义图标调度）
+│   ├── src/main.rs
+│   ├── config.toml             默认类型清单（安装时复制，已有用户配置不覆盖）
+│   └── Cargo.toml
+├── finder-sync/                Finder 扩展（ObjC）+ 宿主 App + UTI/沙盒声明
+├── seticon/seticon.m           写入自定义图标的小工具（支持 --resolve 固化系统图标）
+├── icons/gen_icons.py          图标生成管线（Pillow → PNG → iconutil → icns）
+├── scripts/gen_templates.py    空白模板生成（docx/pptx/xlsx/pdf/rtf）
+└── templates/                  8 个模板文件（pages/key/numbers 来自 MacNewFile）
+```
+
+## 自定义
+
+**增删文档类型**：编辑 `~/Library/Application Support/NewDocument/config.toml`（保存即生效，
+右键菜单下一次打开就会刷新），例如添加 Keynote 变体或 `.drawio`：
 
 ```toml
 [[types]]
 label = "Keynote 演示 (.key)"
 ext = "key"
-template = "演示.key"
+template = "未命名.key"   # templates/ 下的文件；留空 = 创建空文件
 ```
 
-想让新建的 Word 带公司抬头？直接用 Word 编辑
-`~/Library/Application Support/NewDocument/templates/未命名.docx` 并保存即可。
+**更换新文档初始内容**：直接替换 `templates/` 里的同名模板文件。
+**重新生成空白模板 / 图标**：
+
+```bash
+python3 scripts/gen_templates.py   # 需 python-docx / python-pptx / openpyxl
+python3 icons/gen_icons.py         # 需 Pillow；产物 icons/icon-*.icns
+```
+
+**更换快捷键**：访达 → 服务 → 服务设置…，或修改 install.sh 中 `NSKeyEquivalent` 后重装。
+
+## 设计说明
+
+**内存**：`newdoc` 按需运行（峰值约 1.6 MB，用完即退）；Finder 扩展私有内存约 4.5 MB
+（`ps` 显示的 28 MB 绝大部分是全系统共享的只读框架页）——这是右键顶层菜单机制（FinderSync）
+的固有成本；无守护进程、无登录项、无 LaunchAgents。
+
+**安全**：所有子进程经 argv 数组传参，AppleScript 动态数据走 argv，无注入面；文件以
+`create_new` 原子创建，绝不覆盖已有文件；扩展名/文件名/模板名白名单校验，配置恶意值无法
+路径穿越；模板复制失败自动回滚；纯用户态安装，卸载无残留。
+
+**通用性**：类型配置化；universal2 双架构（Apple Silicon + Intel）；CLI 可脚本化：
+
+```bash
+newdoc types                                  # 列出类型
+newdoc create --dir ~/Documents --ext docx    # 非交互创建
+```
+
+## 开发与测试
+
+```bash
+(cd newdoc && cargo test)   # 单元测试：配置校验 / 唯一命名 / 原子创建 / 沙盒 HOME 等
+./build.sh && ./build_ext.sh && python3 build.py   # 构建全部组件
+./install.sh                # 构建并安装
+```
+
+调试：`touch /tmp/newdoc-sync-debug.enabled` 开启扩展诊断日志（`/tmp/newdoc-sync-debug.log`）。
 
 ## 故障排查
 
-- **菜单里没有这两项**：确认已启用（系统设置 → 通用 → 登录项与扩展 → 服务；或 键盘 → 键盘快捷键 → 服务），
-  再执行 `killall Finder`。
-- **点"新建文档"无反应**：`~/Library/Application Support/NewDocument/bin/newdoc types` 确认核心可用。
-- **提示缺少模板**：重跑 `./install.sh`，或检查 `config.toml` 里 `template` 指向的文件名。
-- **"控制 Finder"弹窗**：来自空白处入口的 Apple Event 询问，点允许即可。
+| 现象 | 处理 |
+|---|---|
+| 右键菜单没有「新建文档」 | `killall Finder`；确认扩展已勾选（系统设置 → 通用 → 登录项与扩展 → 扩展 → 添加的扩展 → Finder） |
+| 新建无反应 | `~/Library/Application Support/NewDocument/bin/newdoc types` 确认核心可用 |
+| 图标显示为白纸 | 删除旧文件重建（修复前创建的文件不含自定义图标）；或该类型被其他 App 抢占声明 |
+| 快捷键 ⌥⌘J 无反应 | 首次使用需允许「控制 Finder」；或重新勾选服务（键盘快捷键 → 服务） |
+
+## 致谢与许可
+
+Finder 扩展基于开源项目 [MacNewFile](https://github.com/GarfieldFluffJr/MacNewFile)
+（GPL-3.0）二次开发：沿用其卷宗观察与 bundle 组织思路，创建后端、类型配置、图标体系、
+安全设计均为本项目实现。全项目以 **GPL-3.0** 许可发布（见 [LICENSE](LICENSE)）。

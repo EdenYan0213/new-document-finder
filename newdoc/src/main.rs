@@ -546,16 +546,28 @@ mod tests {
     }
 
     #[test]
-    fn config_rejects_traversal_template() {
-        let bad = r#"
-name_base = "x"
-[[types]]
-label = "坏"
-ext = "txt"
-template = "../escape.docx"
-"#;
-        let cfg: Config = toml::from_str(bad).unwrap();
-        assert!(cfg.types[0].template.as_deref().unwrap().contains(".."));
-        // load_config 的校验逻辑依赖 app_dir，这里直接验证校验函数级行为
+    fn load_config_rejects_bad_values() {
+        let dir = tempdir("cfg");
+        // 模板路径穿越 → 拒绝
+        std::fs::write(
+            dir.join(CONFIG_FILE),
+            "name_base = \"x\"\n[[types]]\nlabel = \"坏\"\next = \"txt\"\ntemplate = \"../escape.docx\"\n",
+        )
+        .unwrap();
+        std::env::set_var("NEWDOC_APP_DIR", &dir);
+        let err = load_config().unwrap_err().to_string();
+        std::env::remove_var("NEWDOC_APP_DIR");
+        assert!(err.contains("非法模板文件名"), "实际：{err}");
+
+        // 扩展名重复 → 拒绝
+        std::fs::write(
+            dir.join(CONFIG_FILE),
+            "name_base = \"x\"\n[[types]]\nlabel = \"a\"\next = \"txt\"\n\n[[types]]\nlabel = \"b\"\next = \"txt\"\n",
+        )
+        .unwrap();
+        std::env::set_var("NEWDOC_APP_DIR", &dir);
+        let err = load_config().unwrap_err().to_string();
+        std::env::remove_var("NEWDOC_APP_DIR");
+        assert!(err.contains("重复扩展名"), "实际：{err}");
     }
 }
