@@ -19,6 +19,17 @@
 #import <unistd.h>
 #import "FinderSync.h"
 
+// 类型选择器（与 newdoc 内嵌版本一致）：类型经 argv 传入，返回 1 起始的序号
+static NSString * const kPickScript = @
+"on run argv\n"
+"	set picked to choose from list argv with title \"新建文档\" with prompt \"选择要创建的文档类型：\" default items {item 1 of argv}\n"
+"	if picked is false then return \"\"\n"
+"	repeat with i from 1 to count of argv\n"
+"		if (item i of argv as text) = (item 1 of picked as text) then return i as text\n"
+"	end repeat\n"
+"	return \"\"\n"
+"end run";
+
 @interface NewDocSync : FIFinderSync
 @property (nonatomic, copy) NSArray<NSArray<NSString *> *> *typeList; // 每项 @[label, ext]
 @property (nonatomic, assign) NSTimeInterval configStamp;
@@ -169,8 +180,10 @@ static void SyncDebugLog(NSString *line) {
                   (unsigned long)whichMenu, (unsigned long)self.typeList.count]);
 
     NSMenu *root = [[NSMenu alloc] initWithTitle:@"新建文档"];
+    // 父项也绑定动作：单击弹类型选择框（悬停进子菜单直达），避免点击后菜单凭空消失
     NSMenuItem *rootItem =
-        [[NSMenuItem alloc] initWithTitle:@"新建文档" action:NULL keyEquivalent:@""];
+        [[NSMenuItem alloc] initWithTitle:@"新建文档" action:@selector(pickAndCreate:) keyEquivalent:@""];
+    rootItem.target = self;
     NSMenu *sub = [[NSMenu alloc] initWithTitle:@"新建文档"];
 
     for (NSArray<NSString *> *pair in self.typeList) {
@@ -198,6 +211,75 @@ static void SyncDebugLog(NSString *line) {
         return [p stringByDeletingLastPathComponent];
     }
     return ctl.targetedURL.path;
+}
+
+// 直接启动 newdoc 创建指定类型；返回是否成功发起
+- (BOOL)spawnNewdoc:(NSString *)dir ext:(NSString *)ext {
+    NSString *bin = NewdocBinPath();
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:bin]) {
+        SyncDebugLog([NSString stringWithFormat:@"newdoc 不可执行：%@", bin]);
+        return NO;
+    }
+    NSTask *t = [[NSTask alloc] init];
+    t.launchPath = bin;
+    t.arguments = @[@"create", @"--dir", dir, @"--ext", ext, @"--no-notify"];
+    t.currentDirectoryPath = @"/";
+    NSPipe *errPipe = [NSPipe pipe];
+    t.standardError = errPipe;
+    t.standardOutput = [NSPipe pipe];
+    @try {
+        [t launch];
+        [t setTerminationHandler:^(NSTask *task) {
+            NSData *err = [[errPipe fileHandleForReading] readDataToEndOfFile];
+            SyncDebugLog([NSString stringWithFormat:
+                @"newdoc 退出 status=%d stderr=%@",
+                task.terminationStatus,
+                [[NSString alloc] initWithData:err encoding:NSUTF8StringEncoding]]);
+        }];
+        return YES;
+    } @catch (NSException *e) {
+        SyncDebugLog([NSString stringWithFormat:@"NSTask 启动失败：%@ %@", e.name, e.reason]);
+        return NO;
+    }
+}
+
+// 单击父项「新建文档」：弹出类型选择框（悬停则进子菜单直达）
+- (void)pickAndCreate:(NSMenuItem *)sender {
+    @try {
+        NSString *dir = [self resolveTargetDir];
+        if (dir.length == 0) {
+            SyncDebugLog(@"pick: 无法确定目标目录");
+            return;
+        }
+        NSMutableArray<NSString *> *labels = [NSMutableArray array];
+        for (NSArray<NSString *> *pair in self.typeList) {
+            [labels addObject:pair[0]];
+        }
+        NSTask *t = [[NSTask alloc] init];
+        t.launchPath = @"/usr/bin/osascript";
+        t.arguments = [@[@"-e", kPickScript] arrayByAddingObjectsFromArray:labels];
+        t.currentDirectoryPath = @"/";
+        NSPipe *out = [NSPipe pipe];
+        t.standardOutput = out;
+        t.standardError = [NSPipe pipe];
+        __weak typeof(self) weakSelf = self;
+        [t setTerminationHandler:^(NSTask *task) {
+            NSString *s = [[NSString alloc] initWithData:
+                           [[out fileHandleForReading] readDataToEndOfFile]
+                           encoding:NSUTF8StringEncoding];
+            s = [s stringByTrimmingCharactersInSet:
+                 [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            NSInteger idx = s.integerValue;
+            if (idx >= 1 && weakSelf &&
+                idx <= (NSInteger)weakSelf.typeList.count) {
+                [weakSelf spawnNewdoc:dir ext:weakSelf.typeList[idx - 1][1]];
+            }
+        }];
+        [t launch];
+    } @catch (NSException *e) {
+        SyncDebugLog([NSString stringWithFormat:@"pickAndCreate 异常：%@ %@",
+                      e.name, e.reason]);
+    }
 }
 
 - (void)createDoc:(NSMenuItem *)sender {
@@ -228,54 +310,22 @@ static void SyncDebugLog(NSString *line) {
             SyncDebugLog(@"无法确定目标文件夹，放弃");
             return;
         }
-        NSString *bin = NewdocBinPath();
-        if (![[NSFileManager defaultManager] isExecutableFileAtPath:bin]) {
-            SyncDebugLog([NSString stringWithFormat:@"newdoc 不可执行：%@", bin]);
-            return;
-        }
-
-        // 首选：直接启动 newdoc（继承沙盒）
-        NSTask *t = [[NSTask alloc] init];
-        t.launchPath = bin;
-        t.arguments = @[@"create", @"--dir", dir, @"--ext", ext, @"--no-notify"];
-        t.currentDirectoryPath = @"/";
-        NSPipe *errPipe = [NSPipe pipe];
-        t.standardError = errPipe;
-        t.standardOutput = [NSPipe pipe];
-        __block BOOL launched = NO;
-        @try {
-            [t launch];
-            launched = YES;
-            [t setTerminationHandler:^(NSTask *task) {
-                NSData *err = [[errPipe fileHandleForReading] readDataToEndOfFile];
-                SyncDebugLog([NSString stringWithFormat:
-                    @"newdoc 退出 status=%d stderr=%@",
-                    task.terminationStatus,
-                    [[NSString alloc] initWithData:err encoding:NSUTF8StringEncoding]]);
-            }];
-        } @catch (NSException *e) {
-            SyncDebugLog([NSString stringWithFormat:
-                          @"NSTask 启动失败：%@ %@", e.name, e.reason]);
-        }
-        if (launched) return;
-
-        // 兜底：AppleScript do shell script（原项目验证过的沙盒可用路径）
-        NSString *escDir = [dir stringByReplacingOccurrencesOfString:@"'"
-                                                          withString:@"'\\''"];
-        NSString *escBin = [bin stringByReplacingOccurrencesOfString:@"'"
-                                                          withString:@"'\\''"];
-        NSString *script = [NSString stringWithFormat:
-            @"do shell script \"%@ create --dir '%@' --ext %@ --no-notify\"",
-            escBin, escDir, ext];
-        SyncDebugLog([NSString stringWithFormat:@"走 AppleScript 兜底：%@", script]);
-        NSAppleScript *as = [[NSAppleScript alloc] initWithSource:script];
-        NSDictionary *errDict = nil;
-        [as executeAndReturnError:&errDict];
-        if (errDict) {
-            SyncDebugLog([NSString stringWithFormat:@"AppleScript 失败：%@",
-                          errDict]);
-        } else {
-            SyncDebugLog(@"AppleScript 兜底成功");
+        if (![self spawnNewdoc:dir ext:ext]) {
+            // 兜底：AppleScript do shell script（原项目验证过的沙盒可用路径）
+            NSString *bin = NewdocBinPath();
+            NSString *escDir = [dir stringByReplacingOccurrencesOfString:@"'"
+                                                              withString:@"'\\''"];
+            NSString *escBin = [bin stringByReplacingOccurrencesOfString:@"'"
+                                                              withString:@"'\\''"];
+            NSString *script = [NSString stringWithFormat:
+                @"do shell script \"%@ create --dir '%@' --ext %@ --no-notify\"",
+                escBin, escDir, ext];
+            SyncDebugLog([NSString stringWithFormat:@"走 AppleScript 兜底：%@", script]);
+            NSAppleScript *as = [[NSAppleScript alloc] initWithSource:script];
+            NSDictionary *errDict = nil;
+            [as executeAndReturnError:&errDict];
+            SyncDebugLog(errDict ? [NSString stringWithFormat:@"AppleScript 失败：%@", errDict]
+                                 : @"AppleScript 兜底成功");
         }
     } @catch (NSException *e) {
         SyncDebugLog([NSString stringWithFormat:@"createDoc 异常：%@ %@",
