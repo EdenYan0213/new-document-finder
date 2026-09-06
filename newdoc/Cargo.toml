@@ -6,6 +6,7 @@ description = "Finder 右键「新建文档」核心工具：按需运行、零�
 
 [dependencies]
 anyhow = "1"
+libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 

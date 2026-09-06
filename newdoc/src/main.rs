@@ -90,13 +90,30 @@ fn default_name_base() -> String {
     "未命名".to_string()
 }
 
+/// 真实主目录：被沙盒接管时（FinderSync 扩展拉起的子进程）HOME 指向容器，
+/// getpwuid 返回的用户主目录不受影响
+fn real_home() -> PathBuf {
+    unsafe {
+        let pw = libc::getpwuid(libc::getuid());
+        if !pw.is_null() {
+            let dir = (*pw).pw_dir;
+            if !dir.is_null() {
+                let s = std::ffi::CStr::from_ptr(dir).to_string_lossy().to_string();
+                if !s.is_empty() {
+                    return PathBuf::from(s);
+                }
+            }
+        }
+    }
+    std::env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("."))
+}
+
 /// 应用数据目录（NEWDOC_APP_DIR 仅供测试覆盖）
 fn app_dir() -> PathBuf {
     if let Ok(p) = std::env::var("NEWDOC_APP_DIR") {
         return PathBuf::from(p);
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    Path::new(&home).join(APP_DIR_NAME)
+    real_home().join(APP_DIR_NAME)
 }
 
 fn load_config() -> Result<Config> {
@@ -289,8 +306,8 @@ fn cmd_run(args: &[String]) -> Result<()> {
 
     let dest = create_in(&dir, &base, &ext, template.as_deref())?;
 
+    reveal(&dest); // 先选中（最直接的反馈），通知随后
     notify(&format!("已创建：{}", dest.file_name().unwrap_or_default().to_string_lossy()));
-    reveal(&dest);
     Ok(())
 }
 
@@ -333,11 +350,11 @@ fn cmd_create(args: &[String]) -> Result<()> {
         .map(|t| app_dir().join(TEMPLATE_SUBDIR).join(t));
 
     let dest = create_in(&dir, &base, &ext, template.as_deref())?;
-    if do_notify {
-        notify(&format!("已创建：{}", dest.file_name().unwrap_or_default().to_string_lossy()));
-    }
     if do_reveal {
         reveal(&dest);
+    }
+    if do_notify {
+        notify(&format!("已创建：{}", dest.file_name().unwrap_or_default().to_string_lossy()));
     }
     println!("{}", dest.display());
     Ok(())
@@ -488,6 +505,21 @@ mod tests {
         assert_eq!(dir, sub);
         // 路径不存在 → None（静默）
         assert!(resolve_target_dir(&["/nonexistent/xyz".to_string()]).unwrap().is_none());
+    }
+
+    #[test]
+    fn sandbox_home_does_not_affect_app_dir() {
+        // 模拟 FinderSync 沙盒子进程：HOME 被重映射到容器 → 仍应定位到真实主目录
+        let fake = tempdir("fakehome");
+        let old = std::env::var("HOME").ok();
+        std::env::remove_var("NEWDOC_APP_DIR");
+        std::env::set_var("HOME", &fake);
+        let d = app_dir();
+        match old {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        assert_ne!(d, fake.join(APP_DIR_NAME), "HOME 被沙盒重映射时不应使用 HOME");
     }
 
     #[test]

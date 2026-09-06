@@ -15,6 +15,8 @@
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+#import <pwd.h>
+#import <unistd.h>
 #import "FinderSync.h"
 
 @interface NewDocSync : FIFinderSync
@@ -39,9 +41,41 @@ static NSArray<NSArray<NSString *> *> *FallbackTypes(void) {
     ];
 }
 
+// 沙盒内 NSHomeDirectory() 返回容器路径，这里取真实主目录（getpwuid 不受沙盒重映射影响）
+static NSString *RealHomeDir(void) {
+    struct passwd *pw = getpwuid(getuid());
+    if (pw && pw->pw_dir && strlen(pw->pw_dir) > 0) {
+        return [NSString stringWithUTF8String:pw->pw_dir];
+    }
+    return NSHomeDirectory();
+}
+
 static NSString *NewdocBinPath(void) {
-    return [NSHomeDirectory() stringByAppendingPathComponent:
+    return [RealHomeDir() stringByAppendingPathComponent:
             @"Library/Application Support/NewDocument/bin/newdoc"];
+}
+
+// 文件调试日志：系统日志会脱敏动态内容，这里落盘明文，便于诊断
+static void SyncDebugLog(NSString *line) {
+    NSString *path = @"/tmp/newdoc-sync-debug.log";
+    NSString *out = [NSString stringWithFormat:@"[%@] %@\n",
+                     [NSDate date], line];
+    for (NSString *p in @[path, [NSTemporaryDirectory()
+            stringByAppendingPathComponent:@"newdoc-sync-debug.log"]]) {
+        @try {
+            NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:p];
+            if (fh) {
+                [fh seekToEndOfFile];
+                [fh writeData:[out dataUsingEncoding:NSUTF8StringEncoding]];
+                [fh closeFile];
+                return;
+            }
+            if ([out writeToFile:p atomically:YES
+                        encoding:NSUTF8StringEncoding error:NULL]) {
+                return;
+            }
+        } @catch (NSException *e) { /* 尝试下一个位置 */ }
+    }
 }
 
 @implementation NewDocSync
@@ -72,7 +106,7 @@ static NSString *NewdocBinPath(void) {
 
 // 菜单类型 = newdoc 配置。用 config.toml 的 mtime 做脏检查，配置改动即时生效。
 - (void)reloadTypesIfNeeded {
-    NSString *cfg = [NSHomeDirectory() stringByAppendingPathComponent:
+    NSString *cfg = [RealHomeDir() stringByAppendingPathComponent:
                      @"Library/Application Support/NewDocument/config.toml"];
     NSDictionary *attrs = [[NSFileManager defaultManager]
                            attributesOfItemAtPath:cfg error:NULL];
@@ -118,6 +152,7 @@ static NSString *NewdocBinPath(void) {
 }
 
 - (NSMenu *)menuForMenuKind:(FIMenuKind)whichMenu {
+    NSLog(@"[newdoc-sync] menuForMenuKind=%lu", (unsigned long)whichMenu);
     if (whichMenu != FIMenuKindContextualMenuForContainer &&
         whichMenu != FIMenuKindContextualMenuForItems) {
         return nil;
@@ -125,6 +160,8 @@ static NSString *NewdocBinPath(void) {
     // 菜单打开时顺带刷新卷宗与类型（无轮询定时器，零空闲 CPU）
     [self updateDirectoryURLs];
     [self reloadTypesIfNeeded];
+    SyncDebugLog([NSString stringWithFormat:@"菜单打开 kind=%lu 类型数=%lu",
+                  (unsigned long)whichMenu, (unsigned long)self.typeList.count]);
 
     NSMenu *root = [[NSMenu alloc] initWithTitle:@"新建文档"];
     NSMenuItem *rootItem =
@@ -159,19 +196,87 @@ static NSString *NewdocBinPath(void) {
 }
 
 - (void)createDoc:(NSMenuItem *)sender {
-    NSString *dir = [self resolveTargetDir];
-    if (dir.length == 0) {
-        NSLog(@"[newdoc-sync] 无法确定目标文件夹");
-        return;
+    @try {
+        // 扩展名优先取 representedObject；跨进程传输丢失时从标题 "(xxx)" 解析
+        NSString *ext = sender.representedObject;
+        NSString *title = sender.title ?: @"";
+        SyncDebugLog([NSString stringWithFormat:@"createDoc 触发 title=%@ represented=%@",
+                      title, sender.representedObject]);
+        if (ext.length == 0) {
+            NSRange open = [title rangeOfString:@"(" options:NSBackwardsSearch];
+            NSRange close = [title rangeOfString:@")" options:NSBackwardsSearch];
+            if (open.location != NSNotFound && close.location > open.location) {
+                ext = [title substringWithRange:
+                       NSMakeRange(open.location + 1, close.location - open.location - 1)];
+            }
+        }
+        if (ext.length == 0) {
+            SyncDebugLog(@"无法从菜单项解析扩展名，放弃");
+            return;
+        }
+
+        NSString *dir = [self resolveTargetDir];
+        SyncDebugLog([NSString stringWithFormat:@"目标目录=%@ targetedURL=%@ selected=%@",
+                      dir, [FIFinderSyncController defaultController].targetedURL,
+                      [FIFinderSyncController defaultController].selectedItemURLs]);
+        if (dir.length == 0) {
+            SyncDebugLog(@"无法确定目标文件夹，放弃");
+            return;
+        }
+        NSString *bin = NewdocBinPath();
+        if (![[NSFileManager defaultManager] isExecutableFileAtPath:bin]) {
+            SyncDebugLog([NSString stringWithFormat:@"newdoc 不可执行：%@", bin]);
+            return;
+        }
+
+        // 首选：直接启动 newdoc（继承沙盒）
+        NSTask *t = [[NSTask alloc] init];
+        t.launchPath = bin;
+        t.arguments = @[@"create", @"--dir", dir, @"--ext", ext, @"--no-notify"];
+        t.currentDirectoryPath = @"/";
+        NSPipe *errPipe = [NSPipe pipe];
+        t.standardError = errPipe;
+        t.standardOutput = [NSPipe pipe];
+        __block BOOL launched = NO;
+        @try {
+            [t launch];
+            launched = YES;
+            [t setTerminationHandler:^(NSTask *task) {
+                NSData *err = [[errPipe fileHandleForReading] readDataToEndOfFile];
+                SyncDebugLog([NSString stringWithFormat:
+                    @"newdoc 退出 status=%d stderr=%@",
+                    task.terminationStatus,
+                    [[NSString alloc] initWithData:err encoding:NSUTF8StringEncoding]]);
+            }];
+        } @catch (NSException *e) {
+            SyncDebugLog([NSString stringWithFormat:
+                          @"NSTask 启动失败：%@ %@", e.name, e.reason]);
+        }
+        if (launched) return;
+
+        // 兜底：AppleScript do shell script（原项目验证过的沙盒可用路径）
+        NSString *escDir = [dir stringByReplacingOccurrencesOfString:@"'"
+                                                          withString:@"'\\''"];
+        NSString *escBin = [bin stringByReplacingOccurrencesOfString:@"'"
+                                                          withString:@"'\\''"];
+        NSString *script = [NSString stringWithFormat:
+            @"do shell script \"%@ create --dir '%@' --ext %@ --no-notify\"",
+            escBin, escDir, ext];
+        SyncDebugLog([NSString stringWithFormat:@"走 AppleScript 兜底：%@", script]);
+        NSAppleScript *as = [[NSAppleScript alloc] initWithSource:script];
+        NSDictionary *errDict = nil;
+        [as executeAndReturnError:&errDict];
+        if (errDict) {
+            SyncDebugLog([NSString stringWithFormat:@"AppleScript 失败：%@",
+                          errDict]);
+        } else {
+            SyncDebugLog(@"AppleScript 兜底成功");
+        }
+    } @catch (NSException *e) {
+        SyncDebugLog([NSString stringWithFormat:@"createDoc 异常：%@ %@",
+                      e.name, e.reason]);
+        NSLog(@"[newdoc-sync] createDoc 异常：%@ %@", e.name, e.reason);
     }
-    NSString *bin = NewdocBinPath();
-    if (![[NSFileManager defaultManager] isExecutableFileAtPath:bin]) {
-        NSLog(@"[newdoc-sync] 未找到 newdoc：%@", bin);
-        return;
-    }
-    [NSTask launchedTaskWithLaunchPath:bin
-                            arguments:@[@"create", @"--dir", dir,
-                                        @"--ext", sender.representedObject]];
 }
 
 @end

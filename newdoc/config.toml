@@ -45,3 +45,18 @@ ext = "csv"
 label = "RTF 富文本 (.rtf)"
 ext = "rtf"
 template = "未命名.rtf"
+
+[[types]]
+label = "Pages 文档 (.pages)"
+ext = "pages"
+template = "未命名.pages"
+
+[[types]]
+label = "Numbers 表格 (.numbers)"
+ext = "numbers"
+template = "未命名.numbers"
+
+[[types]]
+label = "Keynote 演示 (.key)"
+ext = "key"
+template = "未命名.key"
