@@ -223,17 +223,26 @@ fn pick_type(labels: &[String]) -> Result<Option<usize>> {
 
 // ---------- 文件创建 ----------
 
-/// 给新文件写入类型自定义图标：Finder 将始终显示类型徽章，
-/// 不再生成内容缩略图（空白文档的缩略图是一张白纸，毫无辨识度）。
-/// 失败静默（不影响文件本身）；图标随文件保留。
-fn apply_custom_icon(dest: &Path, ext: &str) {
-    let base = app_dir();
-    let icns = base.join("icons").join(format!("icon-{ext}.icns"));
-    let tool = base.join("bin").join("seticon");
-    if !tool.is_file() || !icns.is_file() {
+/// 给新文件固化「系统解析的类型图标」为自定义图标：新建瞬间显示的那个图标
+/// 将永久保留（自定义图标优先于 QuickLook 缩略图，空白文档不会再变成白纸）。
+/// 失败信息写入 stderr（由上层日志采集），不影响文件本身。
+fn apply_custom_icon(dest: &Path) {
+    let tool = app_dir().join("bin").join("seticon");
+    if !tool.is_file() {
+        eprintln!("newdoc: seticon 不存在：{}", tool.display());
         return;
     }
-    let _ = Command::new(&tool).arg(&icns).arg(dest).output();
+    match Command::new(&tool).arg("--resolve").arg(dest).output() {
+        Ok(out) if out.status.success() => {}
+        Ok(out) => {
+            eprintln!(
+                "newdoc: seticon 失败 status={:?} stderr={}",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        Err(e) => eprintln!("newdoc: seticon 启动失败：{e}"),
+    }
 }
 
 /// 在 dir 下原子创建 base.ext / base 2.ext …（create_new 保证不覆盖任何已有文件）
@@ -260,7 +269,7 @@ fn create_in(dir: &Path, base: &str, ext: &str, template: Option<&Path>) -> Resu
                         return Err(e);
                     }
                 }
-                apply_custom_icon(&dest, ext);
+                apply_custom_icon(&dest);
                 return Ok(dest);
             }
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
