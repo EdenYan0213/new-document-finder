@@ -1,0 +1,17 @@
+[package]
+name = "newdoc"
+version = "1.0.0"
+edition = "2021"
+description = "Finder 右键「新建文档」核心工具：按需运行、零驻留内存、配置驱动"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+
+[profile.release]
+opt-level = "z"       # 优化体积
+lto = true
+codegen-units = 1
+strip = true          # 去除符号表
+panic = "abort"       # 去掉 unwind 运行时

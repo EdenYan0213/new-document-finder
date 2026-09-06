@@ -1,0 +1,47 @@
+# ============================================================
+# newdoc 文档类型配置
+# ------------------------------------------------------------
+# · types 按书写顺序显示在「新建文档」选择器中
+# · template 是 templates/ 目录下的模板文件名，留空 = 创建空文件
+# · 添加自定义类型：追加一段 [[types]]，并把模板文件放进 templates/
+#   （例如 .pages / .key / .drawio，只要 App 能打开即可）
+# · name_base 是新文件的默认文件名前缀（重名自动追加序号）
+# ============================================================
+name_base = "未命名"
+
+[[types]]
+label = "文本文档 (.txt)"
+ext = "txt"
+
+[[types]]
+label = "Word 文档 (.docx)"
+ext = "docx"
+template = "未命名.docx"
+
+[[types]]
+label = "Excel 表格 (.xlsx)"
+ext = "xlsx"
+template = "未命名.xlsx"
+
+[[types]]
+label = "PowerPoint 演示文稿 (.pptx)"
+ext = "pptx"
+template = "未命名.pptx"
+
+[[types]]
+label = "PDF 文档 (.pdf)"
+ext = "pdf"
+template = "未命名.pdf"
+
+[[types]]
+label = "Markdown 笔记 (.md)"
+ext = "md"
+
+[[types]]
+label = "CSV 表格 (.csv)"
+ext = "csv"
+
+[[types]]
+label = "RTF 富文本 (.rtf)"
+ext = "rtf"
+template = "未命名.rtf"

@@ -1,0 +1,5 @@
+# 构建产物（install.sh 可重新生成）
+build/
+newdoc/target/
+
+.DS_Store
